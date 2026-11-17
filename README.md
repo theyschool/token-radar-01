@@ -10,22 +10,29 @@ plausibly launch one of their own, and shows a reader how to farm each one.
 
 The board covers all 40 protocols on the snapshot's watchlist (TVL of at least $50M, no token
 on record) plus 158 early finds the floor leaves out — including protocols above the floor the
-watchlist rule sets aside for other reasons. The 32 largest live-token protocols are set aside
+watchlist rule sets aside for other reasons. The 48 largest live-token protocols are set aside
 with their market caps: they are never ranked, and their market-cap-to-TVL ratios are the
 anchor the model prices pre-token protocols by.
 
-## The model (radar-2)
+## The model (radar-3)
 
 ```
-implied = round( tvl_usd × anchor(category) × growth × maturity × breadth )
+implied = round( tvl_usd × anchor(category) × growth × maturity × proven × breadth )
 ```
 
 - **anchor(category)** — the median market-cap-to-TVL of the live protocols in the same
   category (at least 3 comparables, shrunk toward the all-category median of 0.22×), clamped
-  to [0.05, 1.00]. The market, not a hardcoded list, sets what each kind of protocol is worth.
+  to [0.05, 1.00]. With fewer than 3 live comparables the category carries no anchor of its
+  own and the all-category median applies — a single live protocol never prices a whole
+  category, and the detail view says so. The market, not a hardcoded list, sets what each
+  kind of protocol is worth.
 - **growth** — `1 + clamp(change_7d, -50, 100) / 100 × 0.5`, from the protocol's 7-day TVL change.
 - **maturity** — `0.6 + min(age_days, 1095) / 1095 × 0.4`, where age is the time since first
   listing: how long the protocol has run with no token on record. Unknown age counts as 365 days.
+- **proven** — `1` once a protocol has run 90 days, `0.8 + 0.2 × age_days / 90` below that,
+  `0.9` when its listing date is unknown. Maturity rewards waiting long with no token; proven
+  is separate and discounts a track record shorter than a quarter, because a young protocol's
+  TVL is the least proven — new money, a migration or a mislabelled pool rather than sticky usage.
 - **breadth** — `min(1.15, 1 + 0.03 × ln(chains))`: a protocol live on more chains reaches more farmers.
 
 No protocol name is special-cased. The dashboard recomputes every row from the same factors
@@ -37,13 +44,15 @@ Top of the board on this snapshot: Steakhouse Financial ($519.1M implied), Sento
 ## The dashboard
 
 A static page with no network: a sortable, filterable board (search, category, chain,
-watchlist-only, early-finds-only), a detail view per protocol with the model's factor
-breakdown, its live comparables and a seven-step farm plan, a live-token view, and a Method
-tab that states the model, lists every category anchor and carries the caveats.
+watchlist-only, early-finds-only) with a top-10 chart, a detail view per protocol with the
+model's factor breakdown, its live comparables and an eight-step farm plan, a live-token view,
+and a Method tab that states the model, lists every category anchor, shows where the board's
+value sits by category, and carries the caveats.
 
-Each farm plan is derived from the protocol's own record — the category picks the action, the
-TVL picks the capital, the chains pick the gas cost and the second action, the age picks the
-hold — and every step states what it costs and how long it takes.
+Each farm plan is derived from the protocol's own record — the category picks the action and
+a risk step that prices that category's own way to lose money, the TVL picks the capital, the
+chains pick the gas cost and the second action, the age picks the hold — and every step states
+what it costs and how long it takes.
 
 > “No token on record” is not “has no token”: DefiLlama's record may miss a token. A board row
 > is not a prediction that a token will launch, or when. Implied value is this entry's own

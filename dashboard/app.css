@@ -42,11 +42,11 @@ a { color: var(--teal); }
 .fact b { font-size: 21px; font-weight: 750; }
 .fact small { display: block; color: var(--faint); font-size: 12px; margin-top: 2px; }
 .controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin: 16px 0 12px; padding: 14px; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radius); }
-.field { display: flex; flex-direction: column; gap: 4px; }
+.field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 180px; }
 .field label, .field .lab { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .field input[type="search"], .field select {
   background: var(--panel); color: var(--ink); border: 1px solid var(--line);
-  border-radius: 7px; padding: 8px 10px; font: inherit; font-size: 14px; min-width: 190px;
+  border-radius: 7px; padding: 8px 10px; font: inherit; font-size: 14px; width: 100%; min-width: 0;
 }
 .field input[type="search"]:focus, .field select:focus { outline: 2px solid var(--teal-dim); border-color: var(--teal); }
 .checks { display: flex; gap: 14px; align-items: center; padding-bottom: 8px; color: var(--muted); font-size: 14px; }
@@ -84,6 +84,16 @@ th button:hover { color: var(--teal); }
 .implied .bar { height: 6px; background: var(--bg2); border-radius: 3px; overflow: hidden; margin-bottom: 4px; min-width: 90px; }
 .implied .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--teal-dim), var(--amber)); }
 .implied .num { font-weight: 700; }
+.chart-panel { margin: 12px 0 0; }
+.chart { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.chart-row { display: grid; grid-template-columns: 28px minmax(140px, 230px) 1fr 96px; gap: 12px; align-items: center; cursor: pointer; padding: 5px 8px; border-radius: 6px; }
+.chart-row:hover, .chart-row:focus-visible { background: var(--panel2); outline: none; }
+.chart-row:focus-visible { box-shadow: 0 0 0 2px var(--teal-dim); }
+.chart-rank { color: var(--faint); font-variant-numeric: tabular-nums; text-align: right; font-size: 13px; }
+.chart-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-bar { height: 10px; background: var(--bg2); border-radius: 5px; overflow: hidden; }
+.chart-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--teal-dim), var(--amber)); }
+.chart-val { font-weight: 700; text-align: right; white-space: nowrap; }
 .badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 20px; padding: 2px 8px; white-space: nowrap; }
 .badge.watch { background: rgba(251, 191, 36, .16); color: var(--amber); border: 1px solid rgba(251, 191, 36, .45); }
 .badge.early { background: rgba(45, 212, 191, .12); color: var(--teal); border: 1px solid rgba(45, 212, 191, .4); }
@@ -115,4 +125,9 @@ th button:hover { color: var(--teal); }
   .facts { grid-template-columns: repeat(2, 1fr); }
   .lede h1 { font-size: 22px; }
   .count { margin-left: 0; }
+  .field { flex: 1 1 100%; }
+  .checks { flex-wrap: wrap; }
+  .chart-row { grid-template-columns: 24px 1fr 76px; gap: 8px; }
+  .chart-bar { grid-column: 1 / -1; }
+  .detail-head { flex-wrap: wrap; }
 }

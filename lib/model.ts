@@ -17,8 +17,13 @@
 //   growth     = clamp(change_7d, -50, 100) per cent
 //   growthMult = 1 + (growth / 100) x 0.5
 //   maturity   = 0.6 + min(age_days, 1095) / 1095 x 0.4   (age unknown: 365 days)
+//   proven     = 1 when the protocol has run at least 90 days, 0.8 + 0.2 x age / 90
+//                below that, 0.9 when its listing date is unknown: a track record
+//                shorter than one quarter is discounted, because a young protocol's
+//                TVL is the least proven — its size may be new money, a migration or
+//                a mislabelled pool rather than sticky usage
 //   breadth    = min(1.15, 1 + 0.03 x ln(chains))
-//   implied    = max(1, round(tvl_usd x anchor x growthMult x maturity x breadth))
+//   implied    = max(1, round(tvl_usd x anchor x growthMult x maturity x proven x breadth))
 //
 // Every factor comes from the snapshot's own figures; no protocol name is ever special-cased and
 // no row is hand-picked. The page recomputes each row from the same factors and shows the
@@ -56,6 +61,9 @@ export interface ModelConstants {
   maturity_range: number;
   maturity_days: number;
   unknown_age_days: number;
+  proven_floor: number;
+  proven_days: number;
+  proven_unknown: number;
   breadth_per_log: number;
   breadth_cap: number;
   anchor_min_comparables: number;
@@ -72,6 +80,9 @@ export const MODEL: ModelConstants = {
   maturity_range: 0.4,
   maturity_days: 1095,
   unknown_age_days: 365,
+  proven_floor: 0.8,
+  proven_days: 90,
+  proven_unknown: 0.9,
   breadth_per_log: 0.03,
   breadth_cap: 1.15,
   anchor_min_comparables: 3,
@@ -81,10 +92,10 @@ export const MODEL: ModelConstants = {
 };
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'radar-2';
+export const MODEL_VERSION = 'radar-3';
 
 /** How many live-token protocols the Live token view carries, by market cap. */
-export const LIVE_ROWS = 32;
+export const LIVE_ROWS = 48;
 
 /** Categories the watchlist rule sets aside: bridges, staking products and exchanges. */
 const EXCLUDED_CATEGORIES = new Set([
@@ -135,6 +146,7 @@ export interface BoardRow {
     growth_pct: number;
     growth_multiplier: number;
     maturity_multiplier: number;
+    proven_multiplier: number;
     breadth_multiplier: number;
     age_days: number | null;
   };
@@ -158,6 +170,7 @@ export interface RadarRow {
   comparables: number;
   growth_multiplier: number;
   maturity_multiplier: number;
+  proven_multiplier: number;
   breadth_multiplier: number;
   farm_steps: string[];
 }
@@ -182,6 +195,18 @@ export interface LiveRow {
   mcap_tvl: number | null;
 }
 
+/** One category's share of the board: how many pre-token rows it holds, their TVL and implied value, and its best row. */
+export interface CategoryStat {
+  category: string;
+  rows: number;
+  tvl_usd: number;
+  implied_value_usd: number;
+  top_slug: string;
+  top_name: string;
+  top_implied_usd: number;
+  anchor_multiple: number | null;
+}
+
 /** Everything the dashboard needs: the board, the live set, and the model it runs. */
 export interface RadarData {
   as_of: string;
@@ -195,6 +220,7 @@ export interface RadarData {
   early_size: number;
   live_size: number;
   anchors: CategoryAnchor[];
+  category_stats: CategoryStat[];
   rows: RadarRow[];
   live: LiveRow[];
 }
@@ -288,14 +314,14 @@ function anchorFor(anchors: CategoryAnchor[], category: string | null, globalMed
   return { multiple: found.multiple, comparables: found.comparables };
 }
 
-/** The five factors and the implied value one protocol gets under `model`. */
+/** The six factors and the implied value one protocol gets under `model`. */
 export function impliedValue(
   protocol: SnapshotProtocol,
   asOf: string,
   anchors: CategoryAnchor[],
   globalMedian: number,
   model: ModelConstants,
-): { implied: number; categoryMultiple: number; comparables: number; growthPct: number; growthMult: number; maturityMult: number; breadthMult: number; age: number | null } {
+): { implied: number; categoryMultiple: number; comparables: number; growthPct: number; growthMult: number; maturityMult: number; provenMult: number; breadthMult: number; age: number | null } {
   const age = ageDays(asOf, protocol.listed_at);
   const { multiple, comparables } = anchorFor(anchors, protocol.category, globalMedian);
   const rawGrowth = finite(protocol.change_7d, 0);
@@ -304,9 +330,22 @@ export function impliedValue(
   const ageForModel = age ?? model.unknown_age_days;
   const maturityMult =
     model.maturity_floor + (Math.min(Math.max(ageForModel, 0), model.maturity_days) / model.maturity_days) * model.maturity_range;
+  const provenMult = provenMultiplier(age, model);
   const breadthMult = Math.min(model.breadth_cap, 1 + model.breadth_per_log * Math.log(Math.max(1, protocol.chains.length)));
-  const implied = Math.max(1, Math.round(protocol.tvl_usd * multiple * growthMult * maturityMult * breadthMult));
-  return { implied, categoryMultiple: multiple, comparables, growthPct, growthMult, maturityMult, breadthMult, age };
+  const implied = Math.max(1, Math.round(protocol.tvl_usd * multiple * growthMult * maturityMult * provenMult * breadthMult));
+  return { implied, categoryMultiple: multiple, comparables, growthPct, growthMult, maturityMult, provenMult, breadthMult, age };
+}
+
+/**
+ * The track-record factor: 1 once a protocol has run 90 days, rising from the floor to 1 over its
+ * first 90 days, and the unknown-age value when DefiLlama records no listing date. It is separate
+ * from maturity on purpose: maturity rewards waiting long with no token, proven discounts a TVL
+ * too young to have proved it is sticky.
+ */
+export function provenMultiplier(age: number | null, model: ModelConstants): number {
+  if (age === null) return model.proven_unknown;
+  if (age >= model.proven_days) return 1;
+  return model.proven_floor + (1 - model.proven_floor) * (Math.max(0, age) / model.proven_days);
 }
 
 /** The snapshot's protocol by slug. */
@@ -359,6 +398,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
       growth_pct: s.v.growthPct,
       growth_multiplier: round4(s.v.growthMult),
       maturity_multiplier: round4(s.v.maturityMult),
+      proven_multiplier: round4(s.v.provenMult),
       breadth_multiplier: round4(s.v.breadthMult),
       age_days: s.v.age,
     },
@@ -426,8 +466,75 @@ function actionFor(p: SnapshotProtocol, capital: number, chain: string): string 
   return `Deposit $${capital} of USDC into ${name} on ${chain} and keep the position open.`;
 }
 
+/** The risk one category carries, as a step of its own: the concrete way this kind of protocol can lose a farmer money, and the check that prices it before the capital goes in. */
+function riskFor(p: SnapshotProtocol, capital: number, chain: string): FarmStep {
+  const c = (p.category ?? '').toLowerCase();
+  const name = p.name;
+  if (c.includes('lend') || c.includes('cdp') || c.includes('collateral')) {
+    return {
+      text: `Price the liquidation risk before you borrow: work out the collateral price at which ${name} liquidates your position, and keep your borrow at most half the maximum so a one-day dip does not close it.`,
+      cost: 'nothing to check, and the buffer costs yield on the unused half',
+      time: '15 minutes',
+    };
+  }
+  if (c.includes('dex') || c.includes('leveraged farm') || c.includes('liquidity manager')) {
+    return {
+      text: `Price the impermanent loss before you provide liquidity: compare the pool's 30-day range with your entry prices, and size the $${capital} so a 20% move in either token costs you no more than you can accept.`,
+      cost: 'nothing to check, and a 20% move costs part of the position',
+      time: '15 minutes',
+    };
+  }
+  if (c.includes('perpetual') || c.includes('derivative') || c.includes('options') || c.includes('basis')) {
+    return {
+      text: `Price the liquidation and funding before you trade: read ${name}'s funding rate and maintenance margin on ${chain}, and keep the position small enough that a 10% move against you does not liquidate it.`,
+      cost: 'nothing to check, and funding is charged by the hour while open',
+      time: '15 minutes',
+    };
+  }
+  if (c.includes('yield') || c.includes('curator') || c.includes('allocator') || c.includes('aggregator')) {
+    return {
+      text: `Read what the vault actually holds before you deposit: open ${name}'s strategy or holdings page and check the underlying protocols, then confirm the vault's own audit or review is linked from its own site.`,
+      cost: 'nothing to check',
+      time: '20 minutes',
+    };
+  }
+  if (c.includes('prediction')) {
+    return {
+      text: `Read the market's resolution rule before you place a position: check who resolves it, what source they use, and what happens to your $${capital} if the market resolves against the wording you read.`,
+      cost: 'nothing to check, and a wrong read costs the whole position',
+      time: '15 minutes',
+    };
+  }
+  if (c.includes('rwa')) {
+    return {
+      text: `Check redemption before you mint: read how the underlying asset is redeemed, who the custodian is, and how long a redemption takes, so the $${capital} is not locked past the point you need it.`,
+      cost: 'nothing to check, and redemption can take days',
+      time: '20 minutes',
+    };
+  }
+  if (c.includes('stable')) {
+    return {
+      text: `Check the peg before you hold the stable asset: read how it is backed, what keeps it at $1, and how far it has traded from $1 in the last 90 days, before the $${capital} goes in.`,
+      cost: 'nothing to check, and a depeg costs part of the position',
+      time: '15 minutes',
+    };
+  }
+  if (c.includes('insurance')) {
+    return {
+      text: `Read the cover's exclusions before you buy it: check exactly which events the policy pays for, what it excludes, and how a claim is filed, so the $${capital} of cover pays when you need it.`,
+      cost: 'nothing to check',
+      time: '20 minutes',
+    };
+  }
+  return {
+    text: `Read ${name}'s own docs and audit before you deposit: check the contract the app points at, what the protocol's own site says it does, and whether an audit or review is linked from its own site.`,
+    cost: 'nothing to check',
+    time: '20 minutes',
+  };
+}
+
 /**
- * A protocol's farm plan: seven steps, each an action with a cost and a time. The plan is derived
+ * A protocol's farm plan: eight steps, each an action with a cost and a time. The plan is derived
  * from the protocol's own record (category, chains, TVL, age), never from a hand-written list.
  */
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
@@ -465,6 +572,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       cost: `${gas} a week`,
       time: '10 minutes a week',
     },
+    riskFor(p, capital, chain),
     {
       text: `Hold the position for at least ${hold} days so the activity is counted in more than one snapshot, and do not withdraw and re-deposit to game it.`,
       cost: `the $${capital} stays in the position`,
@@ -519,9 +627,39 @@ export function radarRow(row: BoardRow): RadarRow {
     comparables: row.model.comparables,
     growth_multiplier: row.model.growth_multiplier,
     maturity_multiplier: row.model.maturity_multiplier,
+    proven_multiplier: row.model.proven_multiplier,
     breadth_multiplier: row.model.breadth_multiplier,
     farm_steps: row.farm_steps,
   };
+}
+
+/** One category's share of the board, from the ranked rows and the anchor table. */
+export function categoryStats(board: BoardRow[], anchors: CategoryAnchor[]): CategoryStat[] {
+  const anchorByCategory = new Map(anchors.map((a) => [a.category, a.multiple]));
+  const byCategory = new Map<string, CategoryStat>();
+  for (const row of board) {
+    const key = row.category ?? '(no category)';
+    const stat = byCategory.get(key) ?? {
+      category: key,
+      rows: 0,
+      tvl_usd: 0,
+      implied_value_usd: 0,
+      top_slug: row.slug,
+      top_name: row.name,
+      top_implied_usd: row.implied_value_usd,
+      anchor_multiple: anchorByCategory.get(key) ?? null,
+    };
+    stat.rows += 1;
+    stat.tvl_usd += row.tvl_usd;
+    stat.implied_value_usd += row.implied_value_usd;
+    if (row.implied_value_usd > stat.top_implied_usd) {
+      stat.top_slug = row.slug;
+      stat.top_name = row.name;
+      stat.top_implied_usd = row.implied_value_usd;
+    }
+    byCategory.set(key, stat);
+  }
+  return [...byCategory.values()].sort((a, b) => b.implied_value_usd - a.implied_value_usd || (a.category < b.category ? -1 : 1));
 }
 
 /** Everything the dashboard renders, from the snapshot. */
@@ -542,6 +680,7 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     early_size: early,
     live_size: live.length,
     anchors,
+    category_stats: categoryStats(board, anchors),
     rows: board.map(radarRow),
     live,
   };

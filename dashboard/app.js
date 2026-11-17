@@ -39,8 +39,11 @@
     var growthMult = 1 + (growth / 100) * m.growth_weight;
     var age = row.age_days === null || row.age_days === undefined ? m.unknown_age_days : row.age_days;
     var maturity = m.maturity_floor + (Math.min(Math.max(age, 0), m.maturity_days) / m.maturity_days) * m.maturity_range;
+    var proven = row.age_days === null || row.age_days === undefined ? m.proven_unknown
+      : age >= m.proven_days ? 1
+      : m.proven_floor + (1 - m.proven_floor) * (Math.max(0, age) / m.proven_days);
     var breadth = Math.min(m.breadth_cap, 1 + m.breadth_per_log * Math.log(Math.max(1, (row.chains || []).length)));
-    return Math.max(1, Math.round(row.tvl_usd * row.category_multiple * growthMult * maturity * breadth));
+    return Math.max(1, Math.round(row.tvl_usd * row.category_multiple * growthMult * maturity * proven * breadth));
   }
 
   function el(tag, attrs) {
@@ -203,6 +206,27 @@
     return el('span', { class: 'badge early', text: 'Early find' });
   }
 
+  function topChart() {
+    var filtered = state.q || state.category !== 'all' || state.chain !== 'all' || state.watchOnly || state.earlyOnly;
+    var list = filteredRows().slice().sort(function (a, b) { return b.implied_value_usd - a.implied_value_usd; }).slice(0, 10);
+    if (list.length === 0) return null;
+    var max = list[0].implied_value_usd || 1;
+    return el('div', { class: 'panel pad chart-panel' },
+      el('h2', { text: filtered ? 'Top 10 of this filter, by implied value' : 'Top 10 by implied value' }),
+      el('p', { class: 'sub', text: 'The strongest claims on the board, against the top row. Select one for its model breakdown and farm plan.' }),
+      el('div', { class: 'chart' }, list.map(function (r) {
+        return el('div', { class: 'chart-row', tabindex: '0', role: 'button', 'aria-label': r.name + ', rank ' + r.rank + ', implied value ' + fmtUsd(r.implied_value_usd),
+          onclick: function () { openDetail(r.slug); },
+          onkeydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(r.slug); } } },
+          el('span', { class: 'chart-rank', text: String(r.rank) }),
+          el('span', { class: 'chart-name', text: r.name }),
+          el('span', { class: 'chart-bar', 'aria-hidden': 'true' }, el('i', { style: 'width:' + Math.max(3, Math.round((r.implied_value_usd / max) * 100)) + '%' })),
+          el('span', { class: 'chart-val num', text: fmtUsd(r.implied_value_usd) })
+        );
+      }))
+    );
+  }
+
   function boardTable() {
     var list = sortedRows(filteredRows());
     if (list.length === 0) {
@@ -238,20 +262,23 @@
       );
       tbody.appendChild(tr);
     });
-    return el('div', { class: 'panel' },
-      el('div', { class: 'table-wrap' },
-        el('table', null,
-          el('caption', { text: 'Pre-token protocols, strongest implied value first. Select a row for its model breakdown and farm plan.' }),
-          el('thead', null, el('tr', null,
-            sortHeader('implied', 'Rank', true),
-            sortHeader('name', 'Protocol', false),
-            sortHeader('tvl', 'TVL', true),
-            sortHeader('growth', '7d', true),
-            sortHeader('age', 'Age', true),
-            sortHeader('implied', 'Implied value', true),
-            el('th', { scope: 'col', text: 'Board' })
-          )),
-          tbody
+    return el('div', null,
+      topChart(),
+      el('div', { class: 'panel' },
+        el('div', { class: 'table-wrap' },
+          el('table', null,
+            el('caption', { text: 'Pre-token protocols, strongest implied value first. Select a row for its model breakdown and farm plan.' }),
+            el('thead', null, el('tr', null,
+              sortHeader('implied', 'Rank', true),
+              sortHeader('name', 'Protocol', false),
+              sortHeader('tvl', 'TVL', true),
+              sortHeader('growth', '7d', true),
+              sortHeader('age', 'Age', true),
+              sortHeader('implied', 'Implied value', true),
+              el('th', { scope: 'col', text: 'Board' })
+            )),
+            tbody
+          )
         )
       )
     );
@@ -300,8 +327,8 @@
     return el('div', { class: 'panel pad' },
       el('h2', { text: 'How implied value is computed' }),
       el('p', { class: 'sub', text: 'One function scores every row. No protocol name is special-cased and no row is hand-picked; change any input and the ranking moves.' }),
-      el('div', { class: 'formula' }, 'implied = round( tvl_usd × anchor(category) × growth × maturity × breadth )'),
-      el('p', { class: 'sub', text: 'anchor(category): the median market-cap-to-TVL of the live protocols in the same category (at least ' + m.anchor_min_comparables + ' comparables, shrunk toward the all-category median ' + DATA.global_median_mcap_tvl.toFixed(2) + '×), clamped to [' + m.anchor_floor + ', ' + m.anchor_cap + ']. growth: 1 + clamp(change_7d, ' + m.growth_floor + ', ' + m.growth_cap + ') / 100 × ' + m.growth_weight + '. maturity: ' + m.maturity_floor + ' + min(age_days, ' + m.maturity_days + ') / ' + m.maturity_days + ' × ' + m.maturity_range + ', where age is the time since first listing and an unknown age counts as ' + m.unknown_age_days + ' days. breadth: min(' + m.breadth_cap + ', 1 + ' + m.breadth_per_log + ' × ln(chains)).' }),
+      el('div', { class: 'formula' }, 'implied = round( tvl_usd × anchor(category) × growth × maturity × proven × breadth )'),
+      el('p', { class: 'sub', text: 'anchor(category): the median market-cap-to-TVL of the live protocols in the same category (at least ' + m.anchor_min_comparables + ' comparables, shrunk toward the all-category median ' + DATA.global_median_mcap_tvl.toFixed(2) + '×), clamped to [' + m.anchor_floor + ', ' + m.anchor_cap + ']. With fewer than ' + m.anchor_min_comparables + ' live comparables the category carries no anchor of its own and the all-category median applies — a single live protocol never prices a whole category. growth: 1 + clamp(change_7d, ' + m.growth_floor + ', ' + m.growth_cap + ') / 100 × ' + m.growth_weight + '. maturity: ' + m.maturity_floor + ' + min(age_days, ' + m.maturity_days + ') / ' + m.maturity_days + ' × ' + m.maturity_range + ', where age is the time since first listing and an unknown age counts as ' + m.unknown_age_days + ' days. proven: 1 once a protocol has run ' + m.proven_days + ' days, ' + m.proven_floor + ' + ' + (1 - m.proven_floor).toFixed(1) + ' × age_days / ' + m.proven_days + ' below that, ' + m.proven_unknown + ' when its listing date is unknown — a track record shorter than a quarter is discounted, because a young protocol\u2019s TVL is the least proven. breadth: min(' + m.breadth_cap + ', 1 + ' + m.breadth_per_log + ' × ln(chains)).' }),
       el('h3', { text: 'Category anchors, from the live market' }),
       el('div', { class: 'table-wrap' },
         el('table', null,
@@ -312,7 +339,25 @@
         )
       ),
       el('h3', { text: 'How the farm plans are built' }),
-      el('p', { class: 'sub', text: 'Seven steps per protocol, derived from its own record: the category picks the action, the TVL picks the capital, the chains pick the gas cost and the second action, the age picks the hold. Every step states what it costs and how long it takes.' }),
+      el('p', { class: 'sub', text: 'Eight steps per protocol, derived from its own record: the category picks the action and the risk step, the TVL picks the capital, the chains pick the gas cost and the second action, the age picks the hold. Every step states what it costs and how long it takes.' }),
+      el('h3', { text: 'Where the board\u2019s value sits, by category' }),
+      el('div', { class: 'table-wrap' },
+        el('table', null,
+          el('thead', null, el('tr', null,
+            el('th', { scope: 'col', text: 'Category' }), el('th', { scope: 'col', class: 'num', text: 'Rows' }),
+            el('th', { scope: 'col', class: 'num', text: 'TVL' }), el('th', { scope: 'col', class: 'num', text: 'Implied value' }),
+            el('th', { scope: 'col', text: 'Top protocol' }), el('th', { scope: 'col', class: 'num', text: 'Anchor' }))),
+          el('tbody', null, DATA.category_stats.map(function (s) {
+            return el('tr', null,
+              el('td', { text: s.category }),
+              el('td', { class: 'num', text: String(s.rows) }),
+              el('td', { class: 'num', text: fmtUsd(s.tvl_usd) }),
+              el('td', { class: 'num', text: fmtUsd(s.implied_value_usd) }),
+              el('td', null, el('div', { class: 'name' }, el('b', { text: s.top_name }), el('span', { class: 'sub', text: fmtUsd(s.top_implied_usd) }))),
+              el('td', { class: 'num', text: s.anchor_multiple === null ? 'n/a' : s.anchor_multiple.toFixed(2) + '×' }));
+          }))
+        )
+      ),
       el('div', { class: 'caveats' },
         el('b', { text: 'Read this before farming anything. ' }),
         '“No token on record” is not “has no token”: DefiLlama\u2019s record may miss a token, and a protocol on this board may already have one. The watchlist is a floor, never a ceiling, and a board row is not a prediction that a token will launch, or when. Implied value is this entry\u2019s own claim from a frozen snapshot dated ' + DATA.as_of + '; it is not a price, not a valuation and not financial advice. Never pay to claim an airdrop, and only ever follow claim links the protocol itself publishes.'
@@ -326,10 +371,18 @@
     if (!row) return null;
     var recomputed = impliedOf(row);
     var same = recomputed === row.implied_value_usd;
+    var thinAnchor = row.comparables < DATA.model.anchor_min_comparables;
+    var provenLabel = row.age_days === null || row.age_days === undefined
+      ? 'listing date unknown — discounted'
+      : row.age_days < DATA.model.proven_days
+        ? fmtAge(row.age_days) + ' — under ' + DATA.model.proven_days + ' days, discounted'
+        : fmtAge(row.age_days) + ' — over ' + DATA.model.proven_days + ' days, no discount';
     var comps = DATA.live.filter(function (l) { return (l.category || '(no category)') === (row.category || '(no category)'); }).slice(0, 5);
     var compRows = comps.length === 0
       ? el('p', { class: 'sub', text: 'No live-token protocol in this category is in the live set, so the anchor falls back to the all-category median of ' + DATA.global_median_mcap_tvl.toFixed(2) + '×.' })
-      : el('div', { class: 'table-wrap' },
+      : el('div', null,
+          thinAnchor ? el('p', { class: 'sub', text: 'Only ' + row.comparables + ' live protocol' + (row.comparables === 1 ? '' : 's') + ' in this category — too few to set an anchor of its own, so the anchor is the all-category median of ' + DATA.global_median_mcap_tvl.toFixed(2) + '×. The ' + (row.comparables === 1 ? 'protocol' : 'protocols') + ' below ' + (row.comparables === 1 ? 'is' : 'are') + ' shown for reference, not as the anchor.' }) : null,
+          el('div', { class: 'table-wrap' },
           el('table', { class: 'factors' },
             el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Live comparable' }), el('th', { scope: 'col', class: 'num', text: 'TVL' }), el('th', { scope: 'col', class: 'num', text: 'Market cap' }), el('th', { scope: 'col', class: 'num', text: 'Mcap / TVL' }))),
             el('tbody', null, comps.map(function (l) {
@@ -339,7 +392,7 @@
                 el('td', { class: 'num', text: fmtUsd(l.mcap_usd) }),
                 el('td', { class: 'num', text: l.mcap_tvl === null ? 'n/a' : l.mcap_tvl.toFixed(2) + '×' }));
             }))
-          ));
+          )));
     return el('section', { class: 'panel detail', id: 'detail', 'aria-labelledby': 'detail-title' },
       el('div', { class: 'detail-head' },
         el('div', null,
@@ -355,10 +408,12 @@
           el('table', { class: 'factors' },
             el('tbody', null,
               el('tr', null, el('td', { text: 'TVL (snapshot)' }), el('td', { text: fmtUsd(row.tvl_usd) })),
-              el('tr', null, el('td', { text: 'Category anchor (' + (row.category || 'no category') + ', ' + row.comparables + ' live comparable' + (row.comparables === 1 ? '' : 's') + ')' }), el('td', { text: '× ' + fmtMult(row.category_multiple) })),
+              el('tr', null, el('td', { text: 'Category anchor (' + (row.category || 'no category') + ', ' + row.comparables + ' live comparable' + (row.comparables === 1 ? '' : 's') + (thinAnchor ? ' — too few, so the all-category median applies' : '') + ')' }), el('td', { text: '× ' + fmtMult(row.category_multiple) })),
               el('tr', null, el('td', { text: 'Seven-day growth (' + fmtPct(row.change_7d) + ')' }), el('td', { text: '× ' + fmtMult(row.growth_multiplier) })),
               el('tr', null, el('td', { text: 'Maturity (' + fmtAge(row.age_days) + ' with no token on record)' }), el('td', { text: '× ' + fmtMult(row.maturity_multiplier) })),
+              el('tr', null, el('td', { text: 'Track record (' + provenLabel + ')' }), el('td', { text: '× ' + fmtMult(row.proven_multiplier) })),
               el('tr', null, el('td', { text: 'Chain breadth (' + (row.chains || []).length + ' chain' + ((row.chains || []).length === 1 ? '' : 's') + ')' }), el('td', { text: '× ' + fmtMult(row.breadth_multiplier) })),
+              el('tr', null, el('td', { text: 'Implied value per $1 of TVL' }), el('td', { text: row.tvl_usd > 0 ? '$' + (row.implied_value_usd / row.tvl_usd).toFixed(2) : 'n/a' })),
               el('tr', { class: 'total' }, el('td', { text: 'Implied value' }), el('td', { text: fmtUsd(row.implied_value_usd) }))
             )
           )
@@ -369,7 +424,7 @@
         el('p', { class: 'sub', text: 'This is an estimate from a frozen snapshot, not a price. The protocol records no token; that is not proof it has none.' }),
         el('h3', { text: 'What the market pays for this kind of protocol' }),
         compRows,
-        el('h3', { text: 'Farm plan — seven steps' }),
+        el('h3', { text: 'Farm plan — eight steps' }),
         el('ol', { class: 'steps' }, (row.farm_steps || []).map(function (s) {
           var at = s.indexOf(' Cost: ');
           var action = at >= 0 ? s.slice(0, at) : s;

@@ -1,16 +1,115 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Token Radar — pre-token protocols ranked by implied value</title>
+<title>Launch Radar v3 — which pre-token protocols are worth farming</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<a class="skip" href="#board">Skip to the board</a>
-<main id="board" tabindex="-1" aria-busy="true">
-<noscript><p class="noscript">Token Radar needs JavaScript: the board is rendered from the snapshot data beside this page.</p></noscript>
+<header class="top">
+  <p class="eyebrow">Launch Radar v3 &middot; priced from the tokens that already exist</p>
+  <h1>Which protocols are worth farming before they launch a token?</h1>
+  <p class="lede">Nobody knows which of these protocols will ever issue a token, or when. What we can know is what a token <em>would</em> be worth if it traded like the ones that already do — and what it costs to be there early if it does. This board prices <span id="meta-ranked">178</span> pre-token protocols off the 92 launched tokens in the same snapshot, then tells you, row by row, whether farming one is worth your money and your evenings.</p>
+  <p class="meta" id="meta-line">Snapshot 14 November 2026 &middot; 758 protocols &middot; all 40 watchlist names ranked</p>
+</header>
+
+<section class="cards" aria-label="The board in six numbers">
+  <div class="card"><p class="k">Ranked</p><p class="v" id="c-ranked">&ndash;</p><p class="s">pre-token protocols, every watchlist name included</p></div>
+  <div class="card"><p class="k">Top implied value</p><p class="v" id="c-top">&ndash;</p><p class="s" id="c-top-sub">the biggest name on the board</p></div>
+  <div class="card"><p class="k">Typical miss, walk-forward</p><p class="v" id="c-wf">&ndash;</p><p class="s">fit on older listings, tested on newer ones</p></div>
+  <div class="card"><p class="k">Range holds</p><p class="v" id="c-range">&ndash;</p><p class="s">of held-out tokens landed inside the stated range</p></div>
+  <div class="card"><p class="k">Launch odds, held out</p><p class="v" id="c-odds">&ndash;</p><p class="s">of the highest-odds group had actually launched</p></div>
+  <div class="card"><p class="k">Worth farming</p><p class="v" id="c-farm">&ndash;</p><p class="s" id="c-farm-sub">protocols where the maths says go</p></div>
+</section>
+
+<main class="layout">
+  <div class="board-col">
+    <div class="controls">
+      <input id="q" type="search" placeholder="Search a protocol or category&hellip;" aria-label="Search protocols">
+      <select id="verdict" aria-label="Filter by verdict">
+        <option value="">All verdicts</option>
+        <option value="FARM">FARM only</option>
+        <option value="MARGINAL">MARGINAL only</option>
+        <option value="SKIP">SKIP only</option>
+      </select>
+      <select id="sort" aria-label="Sort the board">
+        <option value="rank">Sort: rank</option>
+        <option value="implied">Sort: implied value</option>
+        <option value="tvl">Sort: TVL</option>
+        <option value="odds">Sort: launch odds</option>
+        <option value="ev">Sort: expected value</option>
+        <option value="cost">Sort: farm cost (low first)</option>
+      </select>
+      <span class="count" id="row-count"></span>
+    </div>
+    <p class="hint">Click any row for the full picture: the price range, the launch odds, and the seven-step farm plan with what each step costs.</p>
+    <table id="board">
+      <thead><tr>
+        <th>#</th><th>Protocol</th><th>TVL</th><th>7d</th><th>Implied value</th><th>Launch odds</th><th>Verdict</th><th>Farm plan</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="note">Verdict in plain words: <strong>FARM</strong> means the expected value clears $2M and the plan costs $400 or less. <strong>MARGINAL</strong> means the expected value clears $500K but something is thin — the odds, the size, or both. <strong>SKIP</strong> means the numbers do not pay for your time. Expected value is just implied value times launch odds: what the token would be worth, weighted by how often protocols like this one ever launch.</p>
+  </div>
+
+  <aside class="proof" aria-label="Does it hold on tokens it never saw?">
+    <h2>Does it hold on tokens it never saw?</h2>
+    <p>That is the only question that matters, so here is the whole answer, on the first screen, not buried in a tab.</p>
+    <dl>
+      <dt>Walk-forward miss</dt><dd><strong id="p-wf">&ndash;</strong> <span id="p-wf-geo"></span></dd>
+      <dd class="d">Fit on the 41 tokens listed before 2025, tested on the 29 listed after. The typical newer token landed within this factor of the model's price.</dd>
+      <dt>Leave-one-out miss</dt><dd><strong id="p-loo">&ndash;</strong> <span id="p-loo-geo"></span></dd>
+      <dd class="d">Hide one token, fit on the other 91, predict the hidden one. Repeat 92 times.</dd>
+      <dt>The honest range</dt><dd><strong id="p-range">&ndash;</strong></dd>
+      <dd class="d" id="p-range-d">Any single price on this board is a guess with a wide skirt. The range printed under each price is twelvefold either way, and even that wide, the truth lands inside it most of the time.</dd>
+      <dt>Launch odds, held out</dt><dd><strong id="p-odds">&ndash;</strong></dd>
+      <dd class="d" id="p-odds-d">Five-fold check: the protocols given the highest odds had launched far more often than the ones given the lowest.</dd>
+    </dl>
+    <h3>Every term, kept or dropped on the blind tests</h3>
+    <table class="terms">
+      <thead><tr><th>Terms in the model</th><th>Walk-forward</th><th>Leave-one-out</th><th>Call</th></tr></thead>
+      <tbody id="terms"></tbody>
+    </table>
+    <p class="d">Growth, age, and chain count all sounded useful. None of them moved the blind miss, and age made the walk-forward test much worse, so they are out. TVL does the work; the category nudges it. The curve is log market cap on log TVL with a small per-category offset, fitted on 92 launched tokens. Sixteen recorded tokens could not be used as comparables — fifteen with a market cap of zero and one at minus one dollar — because a price of nothing is not a price.</p>
+    <p class="d"><strong>What the model cannot see.</strong> One launched token trades at 400 times its TVL; another at 0.3% of it. TVL does not explain those. If a protocol's value lives somewhere TVL never goes — a brand, a founder, a license — this board will miss it, in either direction.</p>
+  </aside>
 </main>
+
+<section class="detail" id="detail" hidden>
+  <p class="back"><a href="#" id="back-link">&larr; Back to the board</a></p>
+  <h2 id="d-name"></h2>
+  <p class="d-sub" id="d-sub"></p>
+  <div class="d-grid">
+    <div><p class="k">Implied value</p><p class="v" id="d-implied"></p><p class="s" id="d-range"></p></div>
+    <div><p class="k">Launch odds</p><p class="v" id="d-odds"></p><p class="s" id="d-odds-sub"></p></div>
+    <div><p class="k">Expected value</p><p class="v" id="d-ev"></p><p class="s">implied value &times; launch odds</p></div>
+    <div><p class="k">Verdict</p><p class="v" id="d-verdict"></p><p class="s" id="d-why"></p></div>
+    <div><p class="k">Farm plan</p><p class="v" id="d-cost"></p><p class="s" id="d-plan"></p></div>
+  </div>
+  <h3>The farm plan, step by step</h3>
+  <ol class="steps" id="d-steps"></ol>
+  <p class="d">Costs are gas plus fees only. Your capital is not spent — it sits in the protocol — but it is locked up, and a smart-contract bug could take it. Nothing here is a promise that a token comes.</p>
+</section>
+
+<section class="live">
+  <h2>Already trading — the market&rsquo;s own prices, not ours</h2>
+  <p>These 24 protocols have tokens. Their prices are the market&rsquo;s, and they are the comparables the whole board is priced from. They are not ranked here, because ranking them would mix real prices with model prices.</p>
+  <table>
+    <thead><tr><th>Protocol</th><th>TVL</th><th>Market cap</th><th>Token / TVL</th></tr></thead>
+    <tbody id="live-rows"></tbody>
+  </table>
+</section>
+
+<section class="method">
+  <h2>How the board was made, and what was left out</h2>
+  <p><strong>What is ranked.</strong> All 40 names on the house watchlist, plus every pre-token protocol below the $50M floor that passes the same smell test the watchlist uses — no exchanges, no bridges, no liquid staking, no wrapped or staked products, no versioned copies. That is <span id="m-ranked">178</span> rows.</p>
+  <p><strong>What was set aside, and why.</strong> <span id="m-aside">436</span> protocols did not make the board: <span id="m-live">144</span> already have a token and are priced by the market instead, and the rest are exchanges, bridges, wrapped products, versioned copies, or above-floor names the house list leaves out — the snapshot carries no parent-protocol field, so above the floor we trust the house list rather than guessing. Nothing was dropped for being small or boring.</p>
+  <p><strong>What a price means.</strong> The implied value is what the token would be worth if it traded the way launched tokens of the same size and kind trade. The range around it is the honest part: about twelvefold either way. Read the range, not the point.</p>
+  <p><strong>What farming costs.</strong> Every plan lists gas per step — about $18 a step on Ethereum, about $1 on a cheap L2 — and the hours it takes. Capital is sized to the protocol: $250 for the small ones, up to $2,000 for the big ones. If the plan costs more than the expected value, the verdict says so.</p>
+  <p class="fine">Data: DefiLlama snapshot, 14 November 2026. Model: launch-radar-v3. No prices were set by hand and no protocol name was special-cased; the same curve prices every row.</p>
+</section>
+
 <script src="../data.js"></script>
 <script src="app.js"></script>
 </body>
